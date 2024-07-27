@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from tqdm.auto import tqdm
 from colorama import init, Fore, Style
 
+# Initialize colorama
 init(autoreset=True)
 
 def print_banner():
@@ -42,28 +43,15 @@ def get_repo_contents(repo, path=''):
 def is_markdown_file(file_name):
     return file_name.lower().endswith('.md')
 
-def get_markdown_content(content, file_progress):
+def get_markdown_content(content):
     try:
         file_content = base64.b64decode(content.content).decode('utf-8')
         html = markdown.markdown(file_content)
         text = html2text(html)
-        file_progress.update(1)
         return text
     except Exception as e:
         print(Fore.RED + f"Error processing file {content.path}: {str(e)}")
         return ""
-
-def count_markdown_files(repo):
-    def count_recursive(contents):
-        count = 0
-        for content in contents:
-            if content.type == "dir":
-                count += count_recursive(get_repo_contents(repo, content.path))
-            elif content.type == "file" and is_markdown_file(content.name):
-                count += 1
-        return count
-    
-    return count_recursive(get_repo_contents(repo))
 
 def scrape_docs(g, repo_name, output_dir='output'):
     repo_output_dir = os.path.join(output_dir, repo_name)
@@ -79,16 +67,7 @@ def scrape_docs(g, repo_name, output_dir='output'):
         else:
             raise
 
-    total_files = count_markdown_files(repo)
-    print(Fore.GREEN + f"\n✔ Found {total_files} Markdown files to process.")
-    
-    user_input = input(Fore.YELLOW + "Do you want to proceed with scraping? (y/n): ").strip().lower()
-    if user_input != 'y':
-        print(Fore.RED + "Scraping cancelled.")
-        return
-
     print(Fore.CYAN + "\nStarting scraping process...")
-    overall_progress = tqdm(total=total_files, desc="Overall Progress", position=0, bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}")
 
     def process_contents(contents, current_path=''):
         markdown_contents = {}
@@ -103,10 +82,9 @@ def scrape_docs(g, repo_name, output_dir='output'):
                     if dir_name not in markdown_contents:
                         markdown_contents[dir_name] = []
                     
-                    file_progress = tqdm(total=1, desc=f"Processing {content.name}", position=1, leave=False, bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}")
-                    markdown_contents[dir_name].append((content.name, get_markdown_content(content, file_progress)))
-                    overall_progress.update(1)
-                    file_progress.close()
+                    with tqdm(total=1, desc=f"Processing {content.name}", leave=False, bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}") as file_progress:
+                        markdown_contents[dir_name].append((content.name, get_markdown_content(content)))
+                        file_progress.update(1)
             except Exception as e:
                 print(Fore.RED + f"Error processing {content.path}: {str(e)}")
 
@@ -122,7 +100,6 @@ def scrape_docs(g, repo_name, output_dir='output'):
             print(Fore.GREEN + f"✔ Saved combined docs for {dir_path} to {output_file}")
 
     process_contents(get_repo_contents(repo))
-    overall_progress.close()
 
 def main():
     print_banner()
